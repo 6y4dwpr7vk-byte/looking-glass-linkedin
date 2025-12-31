@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Looking Glass | Critique Window</title>
+  <meta name="description" content="A diagnostic mirror for systems that move faster than humans.">
+
+  <style>
+    :root{
+      --bg:#0b0c10; --fg:#e7e7e7; --muted:#9aa0a6; --edge:#2a3140;
+      --accent:#66fcf1; --speed:.4s;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{
+      margin:0; min-height:100vh;
+      font-family:system-ui,-apple-system,sans-serif;
+      background:var(--bg); color:var(--fg);
+      display:flex; align-items:center; justify-content:center;
+      overflow-x:hidden;
+    }
+    body.modalOpen{overflow:hidden}
+
+    .stage{ text-align:center; max-width:720px; padding:20px; }
+    h1{
+      margin:0 0 12px; letter-spacing:.25em;
+      font-size:clamp(1.2rem,5vw,1.6rem);
+      font-weight:300; text-transform:uppercase;
+    }
+    p{ color:var(--muted); font-size:14px; line-height:1.6; max-width:420px; margin:0 auto; }
+
+    .mirror{
+      margin:40px auto;
+      width:min(300px,70vw); height:min(300px,70vw);
+      border-radius:50%; border:1px solid var(--edge);
+      overflow:hidden; position:relative;
+      cursor:pointer; user-select:none;
+      touch-action:manipulation;
+      transition:transform var(--speed) cubic-bezier(.175,.885,.32,1.275), border-color .2s;
+    }
+    .mirror::after{
+      content:""; position:absolute; inset:0;
+      background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), transparent 60%);
+      pointer-events:none;
+    }
+    .mirror:hover{transform:scale(1.02)}
+    .mirror:active{transform:scale(.99)}
+    .mirror:focus{outline:none}
+    .mirror:focus-visible{outline:2px solid var(--accent); outline-offset:6px}
+
+    .mirror img{ width:100%; height:100%; object-fit:cover; opacity:.85; transition:opacity var(--speed), transform var(--speed); }
+    .mirror:hover img{opacity:1; transform:scale(1.05)}
+
+    .flash{ border-color:var(--accent)!important; box-shadow:0 0 22px rgba(102,252,241,.18); }
+    .flash::after{ background:radial-gradient(circle at 30% 30%, rgba(102,252,241,.18), transparent 60%); }
+
+    .btn{
+      display:inline-block;
+      margin-top:40px;
+      padding:14px 28px;
+      background:transparent; color:var(--fg);
+      border:1px solid var(--edge);
+      cursor:pointer;
+      letter-spacing:.2em;
+      font-size:11px;
+      transition:all .25s ease;
+    }
+    .btn:hover{
+      background:rgba(102,252,241,.08);
+      border-color:var(--accent);
+      box-shadow:0 0 18px rgba(102,252,241,.12);
+    }
+    .btn:active{transform:scale(.98)}
+    .btn:focus-visible{outline:2px solid var(--accent); outline-offset:4px}
+
+    #status{
+      margin-top:16px; min-height:1.2em;
+      color:var(--muted);
+      font-size:11px;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      transition:opacity .35s ease;
+    }
+
+    /* Modal */
+    .overlay{
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.65);
+      display:grid; place-items:center;
+      z-index:10; padding:20px;
+    }
+    .modal{
+      width:min(720px,92vw);
+      border:1px solid var(--edge);
+      background:rgba(11,12,16,.92);
+      backdrop-filter:blur(10px);
+      border-radius:14px;
+      padding:22px;
+      box-shadow:0 0 40px rgba(0,0,0,.55);
+      text-align:left;
+    }
+    .modalHead{
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:10px;
+    }
+    .modal h2{
+      margin:0;
+      font-size:11px;
+      letter-spacing:.25em;
+      color:var(--muted);
+      text-transform:uppercase;
+      font-weight:500;
+    }
+    .x{
+      margin-top:0;
+      border:1px solid var(--edge);
+      background:transparent;
+      color:var(--fg);
+      padding:6px 10px;
+      cursor:pointer;
+      transition:all .2s ease;
+    }
+    .x:hover{ border-color:var(--accent); background:rgba(102,252,241,.08); }
+
+    .pace{
+      margin:6px 0 14px;
+      color:var(--muted);
+      font-size:12px;
+      letter-spacing:.04em;
+    }
+
+    textarea{
+      width:100%;
+      background:rgba(0,0,0,.3);
+      border:1px solid var(--edge);
+      color:var(--fg);
+      border-radius:10px;
+      padding:14px;
+      resize:vertical;
+      outline:none;
+      font-family:inherit;
+      font-size:14px;
+    }
+    textarea:focus-visible{ border-color:var(--accent); }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      justify-content:flex-end;
+      margin-top:16px;
+    }
+    .actions .btn{ margin-top:0; padding:12px 18px; }
+
+    /* Output plate */
+    .plate{
+      margin-top:18px;
+      border-top:1px solid rgba(255,255,255,.06);
+      padding-top:14px;
+    }
+    .out{
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      line-height:1.6;
+      white-space:pre-wrap;
+      color:var(--fg);
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:10px;
+      padding:12px;
+      min-height:84px;
+    }
+
+    .copyRow{
+      margin-top:10px;
+      display:flex; align-items:center; gap:12px;
+      justify-content:space-between;
+    }
+    .copyBtn{
+      margin-top:0;
+      padding:10px 14px;
+      letter-spacing:.18em;
+      font-size:10px;
+      color:var(--muted);
+    }
+    .copyStatus{
+      min-height:1.2em;
+      font-family:ui-monospace, monospace;
+      font-size:10px;
+      letter-spacing:.15em;
+      color:var(--accent);
+      text-transform:uppercase;
+      opacity:.85;
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      *{transition:none!important}
+    }
+  </style>
+</head>
+
+<body>
+  <main class="stage">
+    <h1>THE LOOKING GLASS</h1>
+    <p>A diagnostic mirror for systems that move faster than humans.</p>
+
+    <div class="mirror" id="open" role="button" tabindex="0" aria-label="Touch the glass">
+      <img src="./mirror.png" alt="System visual representation" width="300" height="300">
+    </div>
+
+    <button class="btn" type="button" id="openBtn">TOUCH THE GLASS</button>
+    <p id="status" aria-live="polite"></p>
+
+    <!-- Modal -->
+    <div class="overlay" id="overlay" hidden>
+      <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
+        <header class="modalHead">
+          <h2 id="diagTitle">SYSTEM DIAGNOSTIC</h2>
+          <button class="x" type="button" id="close" aria-label="Exit">✕</button>
+        </header>
+
+        <p class="pace" id="paceLine">Ask one question. One output. No theatre.</p>
+
+        <textarea id="q" rows="4" placeholder="e.g. What is the brake, and who can pull it?"></textarea>
+
+        <div class="actions">
+          <button class="btn" type="button" id="run">SUBMIT</button>
+          <button class="btn" type="button" id="exit">EXIT</button>
+        </div>
+
+        <div class="plate">
+          <div class="out" id="out">—</div>
+
+          <div class="copyRow">
+            <button class="btn copyBtn" id="copy" type="button" hidden>COPY EVIDENCE</button>
+            <div class="copyStatus" id="copyStatus" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const mirror = document.getElementById('open');
+    const openBtn = document.getElementById('openBtn');
+    const overlay = document.getElementById('overlay');
+    const modal = document.getElementById('modal');
+    const closeX = document.getElementById('close');
+    const exitBtn = document.getElementById('exit');
+    const runBtn = document.getElementById('run');
+    const q = document.getElementById('q');
+    const out = document.getElementById('out');
+    const copyBtn = document.getElementById('copy');
+    const copyStatus = document.getElementById('copyStatus');
+    const status = document.getElementById('status');
+
+    let flashTimer, statusTimer;
+
+    const RESPONSES = [
+      "ROOM-FREEZE:\nCan any operator halt this system at the same speed it executes?",
+      "CONTROL GAP:\nAuthority lags execution. Brakes are symbolic.",
+      "OBSERVATION LOOP:\nThe system is reacting to its own outputs.",
+      "LATENCY DRIFT:\nHuman judgement no longer sits in the critical path.",
+      "NULL SIGNAL:\nThe absence of restraint is the dominant force."
+    ];
+
+    function hash(s){
+      let h = 0;
+      for (let i = 0; i < s.length; i++){
+        h = ((h << 5) - h) + s.charCodeAt(i);
+        h |= 0;
+      }
+      return (h >>> 0) % RESPONSES.length;
+    }
+
+    function flashAndStatus(text){
+      mirror.classList.add('flash');
+      status.textContent = text;
+      status.style.opacity = '1';
+
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(()=> mirror.classList.remove('flash'), 250);
+
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(()=>{
+        status.style.opacity = '0';
+        setTimeout(()=>{ if(status.style.opacity === '0') status.textContent = ''; }, 350);
+      }, 1100);
+    }
+
+    function openModal(){
+      overlay.hidden = false;
+      document.body.classList.add('modalOpen');
+      copyStatus.textContent = "";
+      copyBtn.hidden = true;
+      out.textContent = "—";
+      flashAndStatus("Diagnostic window opened...");
+      setTimeout(()=> q.focus(), 0);
+    }
+
+    function closeModal(){
+      overlay.hidden = true;
+      document.body.classList.remove('modalOpen');
+      copyStatus.textContent = "";
+      flashAndStatus("Window closed.");
+    }
+
+    function run(){
+      const t = q.value.trim();
+      if (!t) return;
+      out.textContent = RESPONSES[hash(t)];
+      copyBtn.hidden = false;
+    }
+
+    async function copy(){
+      const text = out.textContent || "";
+      if (!text || text === "—") return;
+
+      try{
+        if (navigator.clipboard && window.isSecureContext){
+          await navigator.clipboard.writeText(text);
+        } else {
+          // iOS/Safari fallback
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly','');
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        copyStatus.textContent = "COPIED";
+      } catch {
+        copyStatus.textContent = "COPY FAILED";
+      }
+      setTimeout(()=> copyStatus.textContent = "", 1200);
+    }
+
+    // Openers
+    mirror.addEventListener('click', openModal);
+    openBtn.addEventListener('click', openModal);
+    mirror.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openModal(); }
+    });
+
+    // Close controls
+    closeX.addEventListener('click', closeModal);
+    exitBtn.addEventListener('click', closeModal);
+    document.addEventListener('keydown', (e)=>{
+      if (!overlay.hidden && e.key === 'Escape') closeModal();
+    });
+
+    // Click outside to close
+    overlay.addEventListener('pointerdown', (e)=>{
+      if (e.target === overlay) closeModal();
+    });
+
+    // Actions
+    runBtn.addEventListener('click', run);
+    copyBtn.addEventListener('click', copy);
+
+    // Enter = submit, Shift+Enter = newline
+    q.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        run();
+      }
+    });
+
+    // Focus trap (simple)
+    document.addEventListener('keydown', (e)=>{
+      if (overlay.hidden || e.key !== 'Tab') return;
+      const focusables = modal.querySelectorAll('button, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    });
+  </script>
+</body>
+</html>
